@@ -1,0 +1,12 @@
+{
+  "domain": "gcbasic_temp",
+  "name": "GCBASIC Temperature Sensor",
+  "codeowners": ["@GreatCowBASIC"],
+  "config_flow": false,
+  "documentation": "https://github.com/GreatCowBASIC/ha-GCBASIC-Temperature_Solution",
+  "issue_tracker": "https://github.com/GreatCowBASIC/ha-GCBASIC-Temperature_Solution/issues",
+  "iot_class": "local_polling",
+  "integration_type": "device",
+  "requirements": ["pyserial>=3.5"],
+  "version": "1.0.0"
+}

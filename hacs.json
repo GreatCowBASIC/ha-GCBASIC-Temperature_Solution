@@ -1,0 +1,5 @@
+{
+  "name": "GCBASIC Temperature Sensor",
+  "render_readme": true,
+  "homeassistant": "2023.1.0"
+}

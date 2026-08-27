@@ -1,0 +1,9 @@
+# Replace your existing "- platform: serial" entry under sensor: with this one.
+# Remove the old serial platform entry (sensor.serial_sensor) so you don't get
+# two conflicting entities / two processes fighting over the same port.
+sensor:
+  - platform: gcbasic_temp
+    serial_port: /dev/ttyACM0
+    baudrate: 9600          # adjust to whatever your GC-BASIC firmware uses
+    query_char: "t"         # the character your firmware expects to trigger a reply
+    name: "GCBASIC Temperature"
