@@ -29,6 +29,9 @@ _LOGGER = logging.getLogger(__name__)
 CONF_SERIAL_PORT = "serial_port"
 CONF_BAUDRATE = "baudrate"
 CONF_QUERY_CHAR = "query_char"
+CONF_GLITCH_WINDOW = "glitch_window"
+CONF_GLITCH_JUMP = "glitch_jump"
+CONF_GLITCH_BAND = "glitch_band"
 
 DEFAULT_NAME = "GCBASIC Temperature"
 DEFAULT_BAUDRATE = 9600
@@ -36,14 +39,15 @@ DEFAULT_QUERY_CHAR = "t"
 SERIAL_TIMEOUT = 2
 
 # Real consecutive readings from this device move by a few hundredths of a
-# degree at a time. A reading that jumps further than GLITCH_JUMP from the
+# degree at a time. A reading that jumps further than glitch_jump from the
 # last trusted value is treated as a suspected glitch (garbled serial data
-# can produce any wild value, not just 0.00) unless the last GLITCH_WINDOW
-# raw readings already sit within GLITCH_BAND of it -- i.e. a real trend
-# toward that value was already underway.
-GLITCH_WINDOW = 5
-GLITCH_JUMP = 3.0
-GLITCH_BAND = 1.0
+# can produce any wild value, not just 0.00) unless the last glitch_window
+# raw readings already sit within glitch_band of it -- i.e. a real trend
+# toward that value was already underway. All three are configurable per
+# sensor since how "twitchy" a device is varies.
+DEFAULT_GLITCH_WINDOW = 5
+DEFAULT_GLITCH_JUMP = 3.0
+DEFAULT_GLITCH_BAND = 1.0
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -51,6 +55,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): cv.positive_int,
         vol.Optional(CONF_QUERY_CHAR, default=DEFAULT_QUERY_CHAR): cv.string,
+        vol.Optional(CONF_GLITCH_WINDOW, default=DEFAULT_GLITCH_WINDOW): cv.positive_int,
+        vol.Optional(CONF_GLITCH_JUMP, default=DEFAULT_GLITCH_JUMP): vol.Coerce(float),
+        vol.Optional(CONF_GLITCH_BAND, default=DEFAULT_GLITCH_BAND): vol.Coerce(float),
     }
 )
 
@@ -69,6 +76,9 @@ def setup_platform(
                 config[CONF_BAUDRATE],
                 config[CONF_QUERY_CHAR],
                 config[CONF_NAME],
+                config[CONF_GLITCH_WINDOW],
+                config[CONF_GLITCH_JUMP],
+                config[CONF_GLITCH_BAND],
             )
         ],
         True,
@@ -82,14 +92,26 @@ class GcBasicTempSensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
-    def __init__(self, port: str, baudrate: int, query_char: str, name: str) -> None:
+    def __init__(
+        self,
+        port: str,
+        baudrate: int,
+        query_char: str,
+        name: str,
+        glitch_window: int,
+        glitch_jump: float,
+        glitch_band: float,
+    ) -> None:
         self._port = port
         self._baudrate = baudrate
         self._query_char = query_char.encode()
         self._attr_name = name
         self._attr_unique_id = f"gcbasic_temp_{port}"
         self._serial: serial.Serial | None = None
-        self._history: deque[float] = deque(maxlen=GLITCH_WINDOW)
+        self._glitch_window = glitch_window
+        self._glitch_jump = glitch_jump
+        self._glitch_band = glitch_band
+        self._history: deque[float] = deque(maxlen=glitch_window)
         self._last_trusted_value: float | None = None
 
     def _ensure_connected(self) -> None:
@@ -102,15 +124,15 @@ class GcBasicTempSensor(SensorEntity):
         )
 
     def _is_trending_toward(self, value: float) -> bool:
-        """True if the last GLITCH_WINDOW readings were already close to value."""
-        if len(self._history) < GLITCH_WINDOW:
+        """True if the last glitch_window readings were already close to value."""
+        if len(self._history) < self._glitch_window:
             return False
-        return all(abs(v - value) <= GLITCH_BAND for v in self._history)
+        return all(abs(v - value) <= self._glitch_band for v in self._history)
 
     def _filter_glitch(self, raw_value: float) -> float:
         """Return the value to report to HA, substituting sudden glitch readings.
 
-        Any reading that jumps more than GLITCH_JUMP away from the last
+        Any reading that jumps more than glitch_jump away from the last
         trusted value is only trusted if recent history was already trending
         toward it. Otherwise it's treated as a glitch (garbled serial data,
         which can land on 0.00 or any other stray value) and the last known
@@ -118,7 +140,7 @@ class GcBasicTempSensor(SensorEntity):
         """
         if (
             self._last_trusted_value is not None
-            and abs(raw_value - self._last_trusted_value) > GLITCH_JUMP
+            and abs(raw_value - self._last_trusted_value) > self._glitch_jump
             and not self._is_trending_toward(raw_value)
         ):
             _LOGGER.warning(
@@ -172,7 +194,8 @@ class GcBasicTempSensor(SensorEntity):
 
             self._attr_native_value = self._filter_glitch(raw_value)
             # Track raw sensor readings (not the filtered value) so a genuine
-            # trend toward zero is still detected while a glitch is suppressed.
+            # trend toward a new value is still detected while a glitch is
+            # suppressed.
             self._history.append(raw_value)
             self._attr_available = True
         except serial.SerialException as err:

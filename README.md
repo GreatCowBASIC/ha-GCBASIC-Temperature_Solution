@@ -10,6 +10,26 @@ sends the query itself on every poll and reads back all lines the device
 sends. Any line starting with `+` or `-` is treated as the temperature
 (e.g. `+23.5`); everything else is ignored.
 
+### Glitch management
+
+The device occasionally returns a garbled reading — most often `0.00`, but
+it can land on any stray value. Reporting that straight to Home Assistant
+would show a false spike/drop in history and any automations or graphs
+watching the sensor.
+
+To filter this out, the integration keeps a short rolling history of raw
+readings. A new reading is only trusted immediately if it's close to the
+last trusted value. If it jumps further away than that, it's treated as a
+suspected glitch **unless** the last several raw readings were already
+trending toward it — in which case it's accepted as a genuine, fast change
+rather than a glitch. A rejected glitch is replaced with the last trusted
+reading instead of being reported to Home Assistant.
+
+This is tuned via three optional config options — see
+[Configuration](#configuration) below — so it can be loosened or tightened
+per device depending on how "twitchy" it is and how fast its real
+temperature can change.
+
 ## Requirements
 
 - A GC-BASIC device connected via USB serial that responds to a query
@@ -50,7 +70,16 @@ sensor:
     query_char: "t"         # the character your firmware expects to trigger a reply
     name: "GCBASIC Temperature"
     scan_interval: 30       # optional, seconds between queries (default: 30)
+    glitch_window: 5        # optional, see "Glitch management" above (default: 5)
+    glitch_jump: 3.0        # optional, °C jump that looks suspicious (default: 3.0)
+    glitch_band: 1.0        # optional, °C tolerance for trend confirmation (default: 1.0)
 ```
+
+| Option           | Default | Meaning                                                                                                    |
+| ----------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `glitch_window`   | `5`     | How many of the most recent raw readings must already be near a new value before a big jump is trusted.    |
+| `glitch_jump`     | `3.0`   | A reading that differs from the last trusted value by more than this (°C) is treated as a suspected glitch. |
+| `glitch_band`     | `1.0`   | How close (°C) each of the `glitch_window` recent readings must be to the new value to confirm a real trend. |
 
 ### Finding your serial port
 

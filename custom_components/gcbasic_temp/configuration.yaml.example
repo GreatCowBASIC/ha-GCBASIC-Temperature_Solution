@@ -7,3 +7,7 @@ sensor:
     baudrate: 9600          # adjust to whatever your GC-BASIC firmware uses
     query_char: "t"         # the character your firmware expects to trigger a reply
     name: "GCBASIC Temperature"
+    # Glitch management (all optional, shown with their defaults) -- see README.md
+    glitch_window: 5        # readings that must already be near a new value to trust a big jump
+    glitch_jump: 3.0        # °C jump from the last trusted reading that looks suspicious
+    glitch_band: 1.0        # °C tolerance used to confirm a real trend
