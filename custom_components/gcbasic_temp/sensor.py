@@ -7,6 +7,7 @@ platform can only listen passively, so it can't drive this protocol.
 from __future__ import annotations
 
 import logging
+from collections import deque
 
 import serial
 import voluptuous as vol
@@ -33,6 +34,16 @@ DEFAULT_NAME = "GCBASIC Temperature"
 DEFAULT_BAUDRATE = 9600
 DEFAULT_QUERY_CHAR = "t"
 SERIAL_TIMEOUT = 2
+
+# Real consecutive readings from this device move by a few hundredths of a
+# degree at a time. A reading that jumps further than GLITCH_JUMP from the
+# last trusted value is treated as a suspected glitch (garbled serial data
+# can produce any wild value, not just 0.00) unless the last GLITCH_WINDOW
+# raw readings already sit within GLITCH_BAND of it -- i.e. a real trend
+# toward that value was already underway.
+GLITCH_WINDOW = 5
+GLITCH_JUMP = 3.0
+GLITCH_BAND = 1.0
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -78,6 +89,8 @@ class GcBasicTempSensor(SensorEntity):
         self._attr_name = name
         self._attr_unique_id = f"gcbasic_temp_{port}"
         self._serial: serial.Serial | None = None
+        self._history: deque[float] = deque(maxlen=GLITCH_WINDOW)
+        self._last_trusted_value: float | None = None
 
     def _ensure_connected(self) -> None:
         if self._serial is not None and self._serial.is_open:
@@ -87,6 +100,40 @@ class GcBasicTempSensor(SensorEntity):
             baudrate=self._baudrate,
             timeout=SERIAL_TIMEOUT,
         )
+
+    def _is_trending_toward(self, value: float) -> bool:
+        """True if the last GLITCH_WINDOW readings were already close to value."""
+        if len(self._history) < GLITCH_WINDOW:
+            return False
+        return all(abs(v - value) <= GLITCH_BAND for v in self._history)
+
+    def _filter_glitch(self, raw_value: float) -> float:
+        """Return the value to report to HA, substituting sudden glitch readings.
+
+        Any reading that jumps more than GLITCH_JUMP away from the last
+        trusted value is only trusted if recent history was already trending
+        toward it. Otherwise it's treated as a glitch (garbled serial data,
+        which can land on 0.00 or any other stray value) and the last known
+        trusted reading is reported instead.
+        """
+        if (
+            self._last_trusted_value is not None
+            and abs(raw_value - self._last_trusted_value) > GLITCH_JUMP
+            and not self._is_trending_toward(raw_value)
+        ):
+            _LOGGER.warning(
+                "Ignoring out-of-trend reading %.2f from %s "
+                "(last trusted value %.2f, recent readings %s); "
+                "reporting last known value instead",
+                raw_value,
+                self._port,
+                self._last_trusted_value,
+                list(self._history),
+            )
+            return self._last_trusted_value
+
+        self._last_trusted_value = raw_value
+        return raw_value
 
     def update(self) -> None:
         """Query the device and parse the reply. Runs in HA's executor thread."""
@@ -113,8 +160,7 @@ class GcBasicTempSensor(SensorEntity):
                 self._attr_available = False
                 return
             try:
-                self._attr_native_value = float(temp_lines[-1])
-                self._attr_available = True
+                raw_value = float(temp_lines[-1])
             except ValueError:
                 _LOGGER.error(
                     "Could not parse temperature line %r from %s",
@@ -122,6 +168,13 @@ class GcBasicTempSensor(SensorEntity):
                     self._port,
                 )
                 self._attr_available = False
+                return
+
+            self._attr_native_value = self._filter_glitch(raw_value)
+            # Track raw sensor readings (not the filtered value) so a genuine
+            # trend toward zero is still detected while a glitch is suppressed.
+            self._history.append(raw_value)
+            self._attr_available = True
         except serial.SerialException as err:
             _LOGGER.error("Error reading from %s: %s", self._port, err)
             self._attr_available = False
