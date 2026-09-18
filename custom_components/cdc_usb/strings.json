@@ -12,6 +12,9 @@
           "glitch_window": "Glitch filter window (readings)",
           "glitch_jump": "Glitch filter jump threshold (°C)",
           "glitch_band": "Glitch filter trend band (°C)"
+        },
+        "data_description": {
+          "scan_interval": "How often, in seconds, the device is polled automatically while the 'Data Logging' switch is on. When that switch is off, polling on this interval is skipped (no commands sent) until it's turned back on; manual buttons and LED toggles still work either way. Adjustable later without re-adding the device via the 'Logging Period' entity."
         }
       },
       "confirm": {
@@ -31,6 +34,9 @@
       "init": {
         "data": {
           "scan_interval": "Polling interval (seconds)"
+        },
+        "data_description": {
+          "scan_interval": "How often, in seconds, the device is polled automatically while the 'Data Logging' switch is on. This is the same value as the 'Logging Period' entity - changing it here or there updates the other."
         }
       }
     }

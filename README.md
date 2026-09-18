@@ -102,6 +102,39 @@ Check **Settings → System → Logs**, filtered to `gcbasic_temp`:
 - `Could not parse temperature line '...' from <port>` — a line started
   with `+`/`-` but wasn't a valid number.
 
+## cdc_usb: a broader driver for the same device
+
+This repo also includes `custom_components/cdc_usb`, a newer integration for
+the same GC-BASIC CDC/USB board that supersedes `gcbasic_temp`: besides
+temperature (with the same glitch filtering described above), it exposes
+the 4 onboard LEDs as switches, the potentiometer/ADC reading, and buttons
+for the device's other commands, all through a config-flow setup (no YAML
+editing required). `gcbasic_temp` is kept in the repo for anyone already
+depending on it via HACS, but new setups should use `cdc_usb`.
+
+### Data Logging switch
+
+Master on/off for automatic polling.
+
+- **On** (default): every **Logging Period** seconds, the integration
+  sends `t` (query temperature) then `x` (query status/ADC) to the device
+  and updates all the sensors/LED states from the replies.
+- **Off**: the scheduled tick still fires on the same interval but becomes
+  a no-op - no commands are sent, entities just keep showing whatever they
+  last read. It doesn't disconnect or stop the integration, just pauses the
+  automatic device chatter.
+
+Manual actions aren't affected either way - toggling an LED, pressing
+"Query Temperature", etc. still talk to the device immediately regardless
+of this switch's state.
+
+### Logging Period number
+
+How often the automatic poll above happens, in seconds (default 60, the
+same cadence the WPF/Avalonia desktop terminal apps for this device use).
+It's the same value you set as "Polling interval" during setup, but can be
+changed live afterward without re-adding the device.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
