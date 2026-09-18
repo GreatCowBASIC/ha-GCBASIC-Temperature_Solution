@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect CDC USB Terminal",
+        "description": "Select the serial port the GCBASIC CDC/USB board (VID:PID 1209:2008) is connected on.",
+        "data": {
+          "port": "Serial port",
+          "baud_rate": "Baud rate",
+          "scan_interval": "Polling interval (seconds)",
+          "temp_adjustment": "Initial temperature adjustment (°C)",
+          "glitch_window": "Glitch filter window (readings)",
+          "glitch_jump": "Glitch filter jump threshold (°C)",
+          "glitch_band": "Glitch filter trend band (°C)"
+        }
+      },
+      "confirm": {
+        "title": "CDC USB device discovered",
+        "description": "A CDC USB Terminal device was found on {port}. Add it to Home Assistant?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not open the serial port or the device did not respond to the probe."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  }
+}
